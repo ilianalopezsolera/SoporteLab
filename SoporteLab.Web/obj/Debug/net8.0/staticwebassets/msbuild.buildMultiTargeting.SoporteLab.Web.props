@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="..\build\SoporteLab.Web.props" />
-</Project>
