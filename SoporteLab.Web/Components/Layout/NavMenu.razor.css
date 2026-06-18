@@ -17,10 +17,12 @@
 
 .top-row {
     height: 3.5rem;
-    background-color: rgba(0,0,0,0.4);
+    background-color: rgb(23, 70, 182);
 }
 
 .navbar-brand {
+    color:white !important;
+    font-weight: bold;
     font-size: 1.1rem;
 }
 
