@@ -1,0 +1,212 @@
+@page "/tickets"
+@rendermode InteractiveServer
+@using SoporteLab.Web.Models
+@inject SoporteLab.Web.Services.TicketApiService ApiService
+
+<h3>Mesa de Ayuda TI</h3>
+
+@if (errorMsg != null)
+{
+    <div class="alert alert-danger">@errorMsg</div>
+}
+
+@* Filtros *@
+<div class="row mb-3">
+    <div class="col-md-4">
+        <input class="form-control" placeholder="Buscar por título o solicitante..."
+               @bind="filtroTexto" @bind:event="oninput" />
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" @bind="filtroEstado">
+            <option value="">Todos los estados</option>
+            @foreach (var e in estados)
+            { <option value="@e">@e</option> }
+        </select>
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" @bind="filtroPrioridad">
+            <option value="">Todas las prioridades</option>
+            @foreach (var p in prioridades)
+            { <option value="@p">@p</option> }
+        </select>
+    </div>
+</div>
+
+@* Tabla *@
+@if (ticketsFiltrados.Count == 0)
+{
+    <div class="alert alert-info">No hay tickets registrados.</div>
+}
+else
+{
+    <table class="table table-bordered table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>ID</th><th>Título</th><th>Categoría</th>
+                <th>Prioridad</th><th>Estado</th><th>Solicitante</th><th>Fecha</th><th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in ticketsFiltrados)
+            {
+                <tr class="@(t.Prioridad == "Crítica" || t.Estado == "Abierto" ? "table-danger" : "")">
+                    <td>@t.Id</td>
+                    <td>@t.Titulo</td>
+                    <td>@t.Categoria</td>
+                    <td>@t.Prioridad</td>
+                    <td>@t.Estado</td>
+                    <td>@t.Solicitante</td>
+                    <td>@t.FechaRegistro.ToShortDateString()</td>
+                    <td>
+                        <button class="btn btn-sm btn-warning" @onclick="() => EditarTicket(t)">Editar</button>
+                        <button class="btn btn-sm btn-danger" @onclick="() => EliminarTicket(t.Id)">Eliminar</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<hr />
+
+@* Formulario *@
+<h5>@(modoEdicion ? "Editar Ticket" : "Nuevo Ticket")</h5>
+<div class="row g-2">
+    <div class="col-md-6">
+        <input class="form-control" placeholder="Título *" @bind="form.Titulo" />
+    </div>
+    <div class="col-md-6">
+        <input class="form-control" placeholder="Solicitante *" @bind="form.Solicitante" />
+    </div>
+    <div class="col-md-12">
+        <textarea class="form-control" placeholder="Descripción" @bind="form.Descripcion" rows="2"></textarea>
+    </div>
+    <div class="col-md-4">
+        <select class="form-select" @bind="form.Categoria">
+            @foreach (var c in categorias)
+            { <option value="@c">@c</option> }
+        </select>
+    </div>
+    <div class="col-md-4">
+        <select class="form-select" @bind="form.Prioridad">
+            @foreach (var p in prioridades)
+            { <option value="@p">@p</option> }
+        </select>
+    </div>
+    <div class="col-md-4">
+        <select class="form-select" @bind="form.Estado">
+            @foreach (var e in estados)
+            { <option value="@e">@e</option> }
+        </select>
+    </div>
+    <div class="col-md-12">
+        <button class="btn btn-primary" @onclick="GuardarTicket">
+            @(modoEdicion ? "Actualizar" : "Crear Ticket")
+        </button>
+        @if (modoEdicion)
+        {
+            <button class="btn btn-secondary ms-2" @onclick="CancelarEdicion">Cancelar</button>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Ticket> tickets = [];
+    private Ticket form = new() { Prioridad = "Media", Estado = "Abierto", Categoria = "Hardware" };
+    private bool modoEdicion = false;
+    private int idEdicion = 0;
+    private string? errorMsg;
+
+    private string filtroTexto = "";
+    private string filtroEstado = "";
+    private string filtroPrioridad = "";
+
+    private string[] estados = ["Abierto", "En proceso", "Resuelto", "Cerrado"];
+    private string[] prioridades = ["Baja", "Media", "Alta", "Crítica"];
+    private string[] categorias = ["Hardware", "Software", "Red", "Acceso", "Otro"];
+
+    private List<Ticket> ticketsFiltrados => tickets
+        .Where(t => (string.IsNullOrEmpty(filtroTexto) ||
+                     t.Titulo.Contains(filtroTexto, StringComparison.OrdinalIgnoreCase) ||
+                     t.Solicitante.Contains(filtroTexto, StringComparison.OrdinalIgnoreCase)))
+        .Where(t => string.IsNullOrEmpty(filtroEstado) || t.Estado == filtroEstado)
+        .Where(t => string.IsNullOrEmpty(filtroPrioridad) || t.Prioridad == filtroPrioridad)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarTickets();
+    }
+
+    private async Task CargarTickets()
+    {
+        try
+        {
+            tickets = await ApiService.ObtenerTodosAsync();
+            errorMsg = null;
+        }
+        catch
+        {
+            errorMsg = "No se pudo conectar con la API. Verifique que esté ejecutándose.";
+        }
+    }
+
+    private async Task GuardarTicket()
+    {
+        try
+        {
+            bool ok = modoEdicion
+                ? await ApiService.ActualizarAsync(idEdicion, form)
+                : await ApiService.CrearAsync(form);
+
+            if (ok)
+            {
+                await CargarTickets();
+                CancelarEdicion();
+            }
+            else
+            {
+                errorMsg = "Error al guardar el ticket. Verifique los datos.";
+            }
+        }
+        catch
+        {
+            errorMsg = "No se pudo conectar con la API.";
+        }
+    }
+
+    private void EditarTicket(Ticket t)
+    {
+        modoEdicion = true;
+        idEdicion = t.Id;
+        form = new Ticket
+        {
+            Titulo = t.Titulo,
+            Descripcion = t.Descripcion,
+            Categoria = t.Categoria,
+            Prioridad = t.Prioridad,
+            Estado = t.Estado,
+            Solicitante = t.Solicitante
+        };
+    }
+
+    private async Task EliminarTicket(int id)
+    {
+        try
+        {
+            await ApiService.EliminarAsync(id);
+            await CargarTickets();
+        }
+        catch
+        {
+            errorMsg = "Error al eliminar el ticket.";
+        }
+    }
+
+    private void CancelarEdicion()
+    {
+        modoEdicion = false;
+        idEdicion = 0;
+        form = new Ticket { Prioridad = "Media", Estado = "Abierto", Categoria = "Hardware" };
+    }
+}
